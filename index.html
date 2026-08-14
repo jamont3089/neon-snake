@@ -219,6 +219,88 @@
       color: var(--muted);
     }
 
+    #relic-tree {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: min(760px, 90%);
+    }
+
+    #relic-tree-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    #relic-tree-header strong {
+      color: var(--neon-yellow);
+      text-shadow: 0 0 10px rgba(255,230,0,0.3);
+    }
+
+    #relic-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      width: 100%;
+    }
+
+    .relic-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      min-height: 124px;
+      padding: 14px 14px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,230,0,0.2);
+      background: rgba(17,17,22,0.8);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+
+    .relic-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255,230,0,0.7);
+      box-shadow: 0 0 12px rgba(255,230,0,0.18);
+    }
+
+    .relic-card.selected {
+      border-color: var(--neon-yellow);
+      background: rgba(255,230,0,0.07);
+      box-shadow: 0 0 18px rgba(255,230,0,0.2);
+    }
+
+    .relic-card.locked {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .relic-rune {
+      font-size: 1.3rem;
+      line-height: 1;
+    }
+
+    .relic-card strong {
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--neon-yellow);
+    }
+
+    .relic-card small {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
     #hint {
       font-size: 13px;
       color: var(--muted);
@@ -416,6 +498,10 @@
       <h2 style="color:var(--neon-green);text-shadow:var(--glow-green)">Run Setup</h2>
       <p>Use <strong>Arrow keys</strong> or <strong>WASD</strong> to steer.<br>Pick one anomaly to shape this run.</p>
       <div id="anomaly-grid"></div>
+      <div id="relic-tree">
+        <div id="relic-tree-header"><span>Relic Mutation Tree</span><strong id="relic-points">0 mutations</strong></div>
+        <div id="relic-grid"></div>
+      </div>
       <button class="btn" id="start-btn">Start Run</button>
     </div>
 
@@ -632,11 +718,73 @@ themeToggleBtn.addEventListener('click', () => setTheme(document.body.dataset.th
       { id: 'bloom', name: 'Bloom', description: 'Each snack adds an extra tail segment.', speedMultiplier: 1, scoreMultiplier: 1, wrapWalls: false, extraGrowth: true }
     ];
 
+    const RELIC_TREE_KEY = 'neon_snake_relics';
+    const RELICS = [
+      { id: 'pulse', name: 'Pulse', rune: '◈', description: '+12% score from every snack.', cost: 1, scoreMultiplier: 1.12, speedMultiplier: 1 },
+      { id: 'vector', name: 'Vector', rune: '✦', description: 'Moves the run 8% faster.', cost: 1, scoreMultiplier: 1, speedMultiplier: 0.92 },
+      { id: 'verdant', name: 'Verdant', rune: '❖', description: 'Adds one extra tail segment when you eat.', cost: 2, scoreMultiplier: 1, speedMultiplier: 1, extraGrowth: true },
+      { id: 'lattice', name: 'Lattice', rune: '⟡', description: 'Every 4th snack is worth double.', cost: 2, scoreMultiplier: 1.2, speedMultiplier: 1, bonusEvery: 4 },
+      { id: 'starfall', name: 'Starfall', rune: '✧', description: 'Level-ups grant a small score surge.', cost: 3, scoreMultiplier: 1.18, speedMultiplier: 1 }
+    ];
+
     let selectedAnomalyId = 'none';
     let activeAnomaly = ANOMALIES[0];
 
+    function loadRelicProgress() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(RELIC_TREE_KEY) || '{"unlocked":[],"selected":[],"mutations":0}');
+        return {
+          unlocked: Array.isArray(stored.unlocked) ? stored.unlocked : [],
+          selected: Array.isArray(stored.selected) ? stored.selected : [],
+          mutations: Number.isFinite(stored.mutations) ? stored.mutations : 0
+        };
+      } catch (error) {
+        return { unlocked: [], selected: [], mutations: 0 };
+      }
+    }
+
+    function saveRelicProgress(progress) {
+      try {
+        localStorage.setItem(RELIC_TREE_KEY, JSON.stringify(progress));
+      } catch (error) {
+        // Ignore storage failures so the game remains playable in constrained environments.
+      }
+    }
+
     function getSelectedAnomaly() {
       return ANOMALIES.find(a => a.id === selectedAnomalyId) || ANOMALIES[0];
+    }
+
+    function getRelicRunState() {
+      const progress = loadRelicProgress();
+      const selectedRelics = RELICS.filter(rel => progress.selected.includes(rel.id));
+      return selectedRelics.reduce((acc, rel) => {
+        acc.scoreMultiplier *= rel.scoreMultiplier || 1;
+        acc.speedMultiplier *= rel.speedMultiplier || 1;
+        acc.extraGrowth = acc.extraGrowth || Boolean(rel.extraGrowth);
+        if (rel.bonusEvery) {
+          acc.bonusEvery = acc.bonusEvery ? Math.min(acc.bonusEvery, rel.bonusEvery) : rel.bonusEvery;
+        }
+        return acc;
+      }, { scoreMultiplier: 1, speedMultiplier: 1, extraGrowth: false, bonusEvery: null });
+    }
+
+    function grantRelicProgress(score, level) {
+      const progress = loadRelicProgress();
+      const earned = Math.max(0, Math.floor(score / 24) + Math.max(0, level - 1));
+      const nextMutations = Math.max(progress.mutations, earned);
+      progress.mutations = nextMutations;
+      RELICS.forEach((relic) => {
+        if (nextMutations >= relic.cost && !progress.unlocked.includes(relic.id)) {
+          progress.unlocked.push(relic.id);
+        }
+      });
+      if (!progress.selected.length) {
+        const firstUnlocked = progress.unlocked[0];
+        if (firstUnlocked) progress.selected = [firstUnlocked];
+      }
+      saveRelicProgress(progress);
+      renderRelicTree();
     }
 
     function renderAnomalyChoices() {
@@ -655,6 +803,46 @@ themeToggleBtn.addEventListener('click', () => setTheme(document.body.dataset.th
       activeAnomaly = getSelectedAnomaly();
       anomalyVal.textContent = activeAnomaly.name;
       startBtn.textContent = activeAnomaly.id === 'none' ? 'Start Run' : `Start Run (${activeAnomaly.name})`;
+      renderRelicTree();
+    }
+
+    function renderRelicTree() {
+      const relicGrid = document.getElementById('relic-grid');
+      const relicPoints = document.getElementById('relic-points');
+      const progress = loadRelicProgress();
+      const selectedSet = new Set(progress.selected);
+      relicGrid.innerHTML = '';
+      RELICS.forEach((relic) => {
+        const card = document.createElement('button');
+        const unlocked = progress.unlocked.includes(relic.id);
+        card.type = 'button';
+        card.className = 'relic-card' + (selectedSet.has(relic.id) ? ' selected' : '') + (unlocked ? '' : ' locked');
+        card.setAttribute('aria-label', unlocked ? `${relic.name} relic selected` : `${relic.name} relic locked`);
+        const meta = unlocked ? (selectedSet.has(relic.id) ? 'Selected' : 'Unlocked') : `Unlock: ${relic.cost} mutations`;
+        card.innerHTML = `
+          <span class="relic-rune">${relic.rune}</span>
+          <strong>${relic.name}</strong>
+          <small>${relic.description}</small>
+          <small>${meta}</small>
+        `;
+        if (!unlocked) {
+          card.disabled = true;
+        } else {
+          card.addEventListener('click', () => {
+            const nextSelected = new Set(progress.selected);
+            if (nextSelected.has(relic.id)) {
+              nextSelected.delete(relic.id);
+            } else {
+              nextSelected.add(relic.id);
+            }
+            progress.selected = [...nextSelected];
+            saveRelicProgress(progress);
+            renderRelicTree();
+          });
+        }
+        relicGrid.appendChild(card);
+      });
+      relicPoints.textContent = `${progress.mutations} mutations`;
     }
 
     // ── State ────────────────────────────────────────────────────────────────
@@ -705,8 +893,9 @@ renderAnomalyChoices();
 
     function computeInterval(lvl) {
       const base = Math.max(55, BASE_INTERVAL - (lvl - 1) * SPEED_STEP);
-      if (!activeAnomaly || !activeAnomaly.speedMultiplier) return base;
-      return Math.round(base * activeAnomaly.speedMultiplier);
+      const relicState = getRelicRunState();
+      const anomalySpeed = activeAnomaly && activeAnomaly.speedMultiplier ? activeAnomaly.speedMultiplier : 1;
+      return Math.round(base * anomalySpeed * relicState.speedMultiplier);
     }
 
     function getLevelEvery() {
@@ -771,14 +960,15 @@ renderAnomalyChoices();
       snake.unshift(head);
 
       if (head.x === food.x && head.y === food.y) {
-        const scoreBase = activeAnomaly?.scoreMultiplier || 1;
-        const bonusEvery = activeAnomaly?.bonusEvery || 0;
+        const relicState = getRelicRunState();
+        const scoreBase = (activeAnomaly?.scoreMultiplier || 1) * (relicState.scoreMultiplier || 1);
+        const bonusEvery = activeAnomaly?.bonusEvery || relicState.bonusEvery || 0;
         const scoreGain = bonusEvery && ((foodCount + 1) % bonusEvery === 0) ? scoreBase * 2 : scoreBase;
         score += scoreGain;
         foodCount++;
         scoreEl.textContent = score;
 
-        if (activeAnomaly?.extraGrowth) {
+        if (activeAnomaly?.extraGrowth || relicState.extraGrowth) {
           const tail = snake[snake.length - 1];
           snake.push({ x: tail.x, y: tail.y });
         }
@@ -829,6 +1019,7 @@ renderAnomalyChoices();
     // ── Game over ────────────────────────────────────────────────────────────
     function gameOver() {
       running = false;
+      grantRelicProgress(score, level);
       finalScoreEl.textContent = score;
       finalLevelEl.textContent = level;
 
@@ -847,6 +1038,7 @@ renderAnomalyChoices();
     function saveOnly() {
       const name = nameInput.value.trim() || 'Anonymous';
       localStorage.setItem(NAME_KEY, name);
+      grantRelicProgress(score, level);
       const idx = addToLeaderboard(name, score, level, activeAnomaly?.name || 'None');
       bestEl.textContent = getBestScore();
       // Hide name entry, show Play Again
@@ -858,6 +1050,7 @@ renderAnomalyChoices();
     function saveAndRestart() {
       const name = nameInput.value.trim() || 'Anonymous';
       localStorage.setItem(NAME_KEY, name);
+      grantRelicProgress(score, level);
       const idx = addToLeaderboard(name, score, level, activeAnomaly?.name || 'None');
       bestEl.textContent = getBestScore();
       renderAnomalyChoices();
