@@ -1,0 +1,22 @@
+name: Validate site
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate HTML
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate HTML with Nu
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/site:ro" \
+            ghcr.io/validator/validator:latest \
+            java -jar /vnu.jar --errors-only /site/index.html

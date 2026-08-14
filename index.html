@@ -10,9 +10,15 @@
     :root {
       --bg: #0d0d0f;
       --canvas-bg: #111116;
-      --grid: rgba(255,255,255,0.03);
+      --grid: rgba(255,255,255,0.04);
       --text: #e2e2e8;
       --muted: #6b6b80;
+      --panel: rgba(255,255,255,0.04);
+      --panel-strong: #16161c;
+      --input-bg: #0d0d0f;
+      --overlay-bg: rgba(13,13,15,0.88);
+      --modal-backdrop: rgba(0,0,0,0.72);
+      --border: rgba(57,255,20,0.18);
       --neon-green: #39ff14;
       --neon-pink: #ff2d78;
       --neon-cyan: #00e5ff;
@@ -22,12 +28,20 @@
       --glow-cyan: 0 0 8px #00e5ff, 0 0 18px #00e5ff66;
     }
 
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #0d0d0f;
-        --canvas-bg: #111116;
-        --text: #e2e2e8;
-      }
+    body[data-theme="light"] {
+      --bg: #edf5f7;
+      --canvas-bg: #f7fbff;
+      --grid: rgba(17, 30, 45, 0.08);
+      --text: #162b3d;
+      --muted: #5b7285;
+      --panel: rgba(135, 154, 176, 0.1);
+      --panel-strong: #ffffff;
+      --input-bg: #f5f9ff;
+      --overlay-bg: rgba(238, 246, 250, 0.9);
+      --modal-backdrop: rgba(74, 92, 108, 0.35);
+      --border: rgba(17,43,64,0.12);
+      --glow-green: 0 0 8px rgba(57,255,20,0.5), 0 0 18px rgba(57,255,20,0.28);
+      --glow-pink: 0 0 8px rgba(255,45,120,0.4), 0 0 18px rgba(255,45,120,0.2);
     }
 
     body {
@@ -94,7 +108,7 @@
       align-items: center;
       justify-content: center;
       gap: 20px;
-      background: rgba(13,13,15,0.88);
+      background: var(--overlay-bg);
       backdrop-filter: blur(2px);
     }
 
@@ -215,10 +229,10 @@
     #header-row {
       display: flex;
       align-items: center;
-      gap: 20px;
+      gap: 16px;
     }
 
-    #lb-open-btn {
+    .header-btn {
       padding: 6px 16px;
       border: 1px solid rgba(57,255,20,0.35);
       border-radius: 4px;
@@ -231,9 +245,13 @@
       cursor: pointer;
       transition: background 0.15s, box-shadow 0.15s;
     }
-    #lb-open-btn:hover {
+    .header-btn:hover {
       background: rgba(57,255,20,0.08);
       box-shadow: var(--glow-green);
+    }
+
+    #theme-toggle-btn {
+      min-width: 120px;
     }
 
     /* ── Leaderboard modal ── */
@@ -241,7 +259,7 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.72);
+      background: var(--modal-backdrop);
       backdrop-filter: blur(3px);
       z-index: 100;
       align-items: center;
@@ -250,7 +268,7 @@
     #lb-modal-backdrop.open { display: flex; }
 
     #lb-modal {
-      background: #16161c;
+      background: var(--panel-strong);
       border: 1px solid rgba(57,255,20,0.22);
       border-radius: 8px;
       box-shadow: 0 0 40px rgba(57,255,20,0.1);
@@ -365,7 +383,7 @@
       padding: 8px 14px;
       border-radius: 4px;
       border: 1px solid rgba(57,255,20,0.4);
-      background: #0d0d0f;
+      background: var(--input-bg);
       color: var(--text);
       font-size: 15px;
       font-family: inherit;
@@ -379,7 +397,8 @@
 <body>
   <div id="header-row">
     <h1>Neon Snake</h1>
-    <button id="lb-open-btn">🏆 Leaderboard</button>
+    <button id="theme-toggle-btn" class="header-btn" type="button" aria-label="Toggle light mode">☀ Light mode</button>
+    <button id="lb-open-btn" class="header-btn" type="button">🏆 Leaderboard</button>
   </div>
 
   <div id="hud">
@@ -463,37 +482,62 @@
     canvas.width  = CANVAS_W;
     canvas.height = CANVAS_H;
 
-    const scoreEl    = document.getElementById('score-val');
-    const bestEl     = document.getElementById('best-val');
-    const levelEl    = document.getElementById('level-val');
-    const anomalyVal = document.getElementById('anomaly-val');
-    const startScr   = document.getElementById('start-screen');
-    const gameoverScr= document.getElementById('gameover-screen');
-    const finalScoreEl = document.getElementById('final-score');
-    const finalLevelEl = document.getElementById('final-level');
-    const nameEntryEl  = document.getElementById('name-entry');
-    const nameInput    = document.getElementById('name-input');
-    const startBtn     = document.getElementById('start-btn');
-    const saveBtn      = document.getElementById('save-btn');
-    const restartBtn   = document.getElementById('restart-btn');
-    const anomalyGrid  = document.getElementById('anomaly-grid');
+const scoreEl    = document.getElementById('score-val');
+const bestEl     = document.getElementById('best-val');
+const levelEl    = document.getElementById('level-val');
+const anomalyVal = document.getElementById('anomaly-val');
+const startScr   = document.getElementById('start-screen');
+const gameoverScr= document.getElementById('gameover-screen');
+const finalScoreEl = document.getElementById('final-score');
+const finalLevelEl = document.getElementById('final-level');
+const nameEntryEl  = document.getElementById('name-entry');
+const nameInput    = document.getElementById('name-input');
+const startBtn     = document.getElementById('start-btn');
+const saveBtn      = document.getElementById('save-btn');
+const restartBtn   = document.getElementById('restart-btn');
+const anomalyGrid  = document.getElementById('anomaly-grid');
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
 
-    // Leaderboard modal
-    const lbBackdrop = document.getElementById('lb-modal-backdrop');
-    const lbTbody    = document.getElementById('lb-tbody');
-    const lbOpenBtn  = document.getElementById('lb-open-btn');
-    const lbCloseBtn = document.getElementById('lb-close');
-    const lbClearBtn = document.getElementById('lb-clear-btn');
+// Leaderboard modal
+const lbBackdrop = document.getElementById('lb-modal-backdrop');
+const lbTbody    = document.getElementById('lb-tbody');
+const lbOpenBtn  = document.getElementById('lb-open-btn');
+const lbCloseBtn = document.getElementById('lb-close');
+const lbClearBtn = document.getElementById('lb-clear-btn');
 
-    startBtn.addEventListener('click', startGame);
-    restartBtn.addEventListener('click', () => {
-      renderAnomalyChoices();
-      startScr.style.display = 'flex';
-      gameoverScr.style.display = 'none';
-      restartBtn.style.display = 'none';
-    });
-    saveBtn.addEventListener('click', saveAndRestart);
-    document.getElementById('save-only-btn').addEventListener('click', saveOnly);
+startBtn.addEventListener('click', startGame);
+restartBtn.addEventListener('click', () => {
+  renderAnomalyChoices();
+  startScr.style.display = 'flex';
+  gameoverScr.style.display = 'none';
+  restartBtn.style.display = 'none';
+});
+
+const THEME_KEY = 'neon_snake_theme';
+function getPreferredTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch (error) {
+    // Ignore storage errors and fall back to the OS/browser preference.
+  }
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+function setTheme(theme) {
+  document.body.dataset.theme = theme;
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch (error) {
+    // Ignore storage errors so the theme toggle still works when persistence is unavailable.
+  }
+  themeToggleBtn.textContent = theme === 'light' ? '🌙 Dark mode' : '☀ Light mode';
+  themeToggleBtn.setAttribute('aria-label', theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+  drawGridBackground();
+}
+
+saveBtn.addEventListener('click', saveAndRestart);
+document.getElementById('save-only-btn').addEventListener('click', saveOnly);
+themeToggleBtn.addEventListener('click', () => setTheme(document.body.dataset.theme === 'light' ? 'dark' : 'light'));
 
     // Leaderboard modal controls
     lbOpenBtn.addEventListener('click', () => openLeaderboard(null));
@@ -619,24 +663,34 @@
     let foodColorIdx = 0;
     let currentInterval = BASE_INTERVAL;
 
-    bestEl.textContent = getBestScore();
-    renderAnomalyChoices();
+bestEl.textContent = getBestScore();
+renderAnomalyChoices();
 
-    // ── Grid background (drawn once to an offscreen canvas) ──────────────────
+// ── Grid background (drawn once to an offscreen canvas) ──────────────────
     const gridCanvas = document.createElement('canvas');
     gridCanvas.width  = CANVAS_W;
     gridCanvas.height = CANVAS_H;
     const gCtx = gridCanvas.getContext('2d');
-    gCtx.fillStyle = '#111116';
-    gCtx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    gCtx.strokeStyle = 'rgba(255,255,255,0.04)';
-    gCtx.lineWidth = 0.5;
-    for (let x = 0; x <= COLS; x++) {
-      gCtx.beginPath(); gCtx.moveTo(x * CELL, 0); gCtx.lineTo(x * CELL, CANVAS_H); gCtx.stroke();
+
+    function drawGridBackground() {
+      const styles = getComputedStyle(document.body);
+      const bg = styles.getPropertyValue('--canvas-bg').trim() || '#111116';
+      const grid = styles.getPropertyValue('--grid').trim() || 'rgba(255,255,255,0.04)';
+      gCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      gCtx.fillStyle = bg;
+      gCtx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      gCtx.strokeStyle = grid;
+      gCtx.lineWidth = 0.5;
+      for (let x = 0; x <= COLS; x++) {
+        gCtx.beginPath(); gCtx.moveTo(x * CELL, 0); gCtx.lineTo(x * CELL, CANVAS_H); gCtx.stroke();
+      }
+      for (let y = 0; y <= ROWS; y++) {
+        gCtx.beginPath(); gCtx.moveTo(0, y * CELL); gCtx.lineTo(CANVAS_W, y * CELL); gCtx.stroke();
+      }
     }
-    for (let y = 0; y <= ROWS; y++) {
-      gCtx.beginPath(); gCtx.moveTo(0, y * CELL); gCtx.lineTo(CANVAS_W, y * CELL); gCtx.stroke();
-    }
+
+    setTheme(getPreferredTheme());
+    bestEl.textContent = getBestScore();
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     function rand(max) { return Math.floor(Math.random() * max); }
