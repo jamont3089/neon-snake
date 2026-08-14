@@ -75,9 +75,17 @@
       color: var(--muted);
       letter-spacing: 0.06em;
       text-transform: uppercase;
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
     #hud span { color: var(--text); font-weight: 600; }
+
+    #anomaly-val {
+      display: inline-block;
+      min-width: 90px;
+      color: var(--neon-cyan);
+    }
 
     #canvas-wrap {
       position: relative;
@@ -147,6 +155,69 @@
       box-shadow: none;
     }
     .btn-ghost:hover { background: rgba(57,255,20,0.08); opacity: 1; }
+
+    #anomaly-picker {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      width: min(720px, 90%);
+    }
+
+    #anomaly-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      width: 100%;
+    }
+
+    .anomaly-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+      min-height: 140px;
+      padding: 16px 16px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(57,255,20,0.28);
+      background: rgba(17,17,22,0.9);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+    }
+
+    .anomaly-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(57,255,20,0.7);
+      box-shadow: var(--glow-green);
+    }
+
+    .anomaly-card.selected {
+      border-color: var(--neon-green);
+      background: rgba(57,255,20,0.08);
+      box-shadow: var(--glow-green);
+    }
+
+    .anomaly-rune {
+      font-size: 1.3rem;
+      line-height: 1;
+    }
+
+    .anomaly-card strong {
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+    }
+
+    .anomaly-card small {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
 
     #hint {
       font-size: 13px;
@@ -334,6 +405,7 @@
     <div>Score&nbsp;&nbsp;<span id="score-val">0</span></div>
     <div>Best&nbsp;&nbsp;<span id="best-val">0</span></div>
     <div>Level&nbsp;&nbsp;<span id="level-val">1</span></div>
+    <div>Run&nbsp;&nbsp;<span id="anomaly-val">None</span></div>
   </div>
 
   <div id="canvas-wrap">
@@ -341,9 +413,10 @@
 
     <!-- Start screen -->
     <div class="overlay" id="start-screen">
-      <h2 style="color:var(--neon-green);text-shadow:var(--glow-green)">Ready?</h2>
-      <p>Use <strong>Arrow keys</strong> or <strong>WASD</strong> to steer.<br>Eat food to grow and score points.</p>
-      <button class="btn" id="start-btn">Start Game</button>
+      <h2 style="color:var(--neon-green);text-shadow:var(--glow-green)">Run Setup</h2>
+      <p>Use <strong>Arrow keys</strong> or <strong>WASD</strong> to steer.<br>Pick one anomaly to shape this run.</p>
+      <div id="anomaly-grid"></div>
+      <button class="btn" id="start-btn">Start Run</button>
     </div>
 
     <!-- Game-over screen -->
@@ -376,8 +449,9 @@
             <th>Name</th>
             <th>Score</th>
             <th>Level</th>
-            <th>Date</th>
-          </tr>
+                <th>Mod</th>
+                <th>Date</th>
+              </tr>
         </thead>
         <tbody id="lb-tbody"></tbody>
       </table>
@@ -408,53 +482,62 @@
     canvas.width  = CANVAS_W;
     canvas.height = CANVAS_H;
 
-    const scoreEl    = document.getElementById('score-val');
-    const bestEl     = document.getElementById('best-val');
-    const levelEl    = document.getElementById('level-val');
-    const startScr   = document.getElementById('start-screen');
-    const gameoverScr= document.getElementById('gameover-screen');
-    const finalScoreEl = document.getElementById('final-score');
-    const finalLevelEl = document.getElementById('final-level');
-    const nameEntryEl  = document.getElementById('name-entry');
-    const nameInput    = document.getElementById('name-input');
-    const saveBtn      = document.getElementById('save-btn');
-    const restartBtn   = document.getElementById('restart-btn');
-    const themeToggleBtn = document.getElementById('theme-toggle-btn');
+const scoreEl    = document.getElementById('score-val');
+const bestEl     = document.getElementById('best-val');
+const levelEl    = document.getElementById('level-val');
+const anomalyVal = document.getElementById('anomaly-val');
+const startScr   = document.getElementById('start-screen');
+const gameoverScr= document.getElementById('gameover-screen');
+const finalScoreEl = document.getElementById('final-score');
+const finalLevelEl = document.getElementById('final-level');
+const nameEntryEl  = document.getElementById('name-entry');
+const nameInput    = document.getElementById('name-input');
+const startBtn     = document.getElementById('start-btn');
+const saveBtn      = document.getElementById('save-btn');
+const restartBtn   = document.getElementById('restart-btn');
+const anomalyGrid  = document.getElementById('anomaly-grid');
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
 
-    // Leaderboard modal
-    const lbBackdrop = document.getElementById('lb-modal-backdrop');
-    const lbTbody    = document.getElementById('lb-tbody');
-    const lbOpenBtn  = document.getElementById('lb-open-btn');
-    const lbCloseBtn = document.getElementById('lb-close');
-    const lbClearBtn = document.getElementById('lb-clear-btn');
+// Leaderboard modal
+const lbBackdrop = document.getElementById('lb-modal-backdrop');
+const lbTbody    = document.getElementById('lb-tbody');
+const lbOpenBtn  = document.getElementById('lb-open-btn');
+const lbCloseBtn = document.getElementById('lb-close');
+const lbClearBtn = document.getElementById('lb-clear-btn');
 
-    const THEME_KEY = 'neon_snake_theme';
-    function getPreferredTheme() {
-      try {
-        const saved = localStorage.getItem(THEME_KEY);
-        if (saved === 'light' || saved === 'dark') return saved;
-      } catch (error) {
-        // Ignore storage errors and fall back to the OS/browser preference.
-      }
-      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    }
-    function setTheme(theme) {
-      document.body.dataset.theme = theme;
-      try {
-        localStorage.setItem(THEME_KEY, theme);
-      } catch (error) {
-        // Ignore storage errors so the theme toggle still works when persistence is unavailable.
-      }
-      themeToggleBtn.textContent = theme === 'light' ? '🌙 Dark mode' : '☀ Light mode';
-      themeToggleBtn.setAttribute('aria-label', theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
-      drawGridBackground();
-    }
+startBtn.addEventListener('click', startGame);
+restartBtn.addEventListener('click', () => {
+  renderAnomalyChoices();
+  startScr.style.display = 'flex';
+  gameoverScr.style.display = 'none';
+  restartBtn.style.display = 'none';
+});
 
-    document.getElementById('start-btn').addEventListener('click', startGame);
-    restartBtn.addEventListener('click', startGame);
-    saveBtn.addEventListener('click', saveAndRestart);
-    document.getElementById('save-only-btn').addEventListener('click', saveOnly);
-    themeToggleBtn.addEventListener('click', () => setTheme(document.body.dataset.theme === 'light' ? 'dark' : 'light'));
+const THEME_KEY = 'neon_snake_theme';
+function getPreferredTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch (error) {
+    // Ignore storage errors and fall back to the OS/browser preference.
+  }
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+function setTheme(theme) {
+  document.body.dataset.theme = theme;
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch (error) {
+    // Ignore storage errors so the theme toggle still works when persistence is unavailable.
+  }
+  themeToggleBtn.textContent = theme === 'light' ? '🌙 Dark mode' : '☀ Light mode';
+  themeToggleBtn.setAttribute('aria-label', theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+  drawGridBackground();
+}
+
+saveBtn.addEventListener('click', saveAndRestart);
+document.getElementById('save-only-btn').addEventListener('click', saveOnly);
+themeToggleBtn.addEventListener('click', () => setTheme(document.body.dataset.theme === 'light' ? 'dark' : 'light'));
 
     // Leaderboard modal controls
     lbOpenBtn.addEventListener('click', () => openLeaderboard(null));
@@ -482,12 +565,13 @@
       return lb.length < MAX_ENTRIES || s > lb[lb.length - 1].score;
     }
 
-    function addToLeaderboard(name, s, lvl) {
+    function addToLeaderboard(name, s, lvl, modifier = 'None') {
       const lb = loadLeaderboard();
       const entry = {
         name: name.trim() || 'Anonymous',
         score: s,
         level: lvl,
+        modifier: modifier || 'None',
         date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
       };
       lb.push(entry);
@@ -506,18 +590,20 @@
       const lb = loadLeaderboard();
       lbTbody.innerHTML = '';
       if (!lb.length) {
-        lbTbody.innerHTML = '<tr><td colspan="5" class="lb-empty">No scores yet — play to get on the board!</td></tr>';
+        lbTbody.innerHTML = '<tr><td colspan="6" class="lb-empty">No scores yet — play to get on the board!</td></tr>';
         return;
       }
       lb.forEach((e, i) => {
         const tr = document.createElement('tr');
         if (i === 0) tr.className = 'lb-rank-1';
         if (i === newEntryIdx) tr.classList.add('lb-new-entry');
+        const modifier = e.modifier && e.modifier !== 'None' ? e.modifier : '—';
         tr.innerHTML = `
           <td>${i === 0 ? '' : `#${i + 1}`}</td>
           <td>${escHtml(e.name)}</td>
           <td>${e.score}</td>
           <td>${e.level}</td>
+          <td>${modifier}</td>
           <td>${e.date}</td>`;
         lbTbody.appendChild(tr);
       });
@@ -538,13 +624,49 @@
       if (pausedForModal) { paused = false; pausedForModal = false; }
     }
 
+    const ANOMALIES = [
+      { id: 'none', name: 'None', description: 'Classic run with no modifier.', speedMultiplier: 1, scoreMultiplier: 1, wrapWalls: false, extraGrowth: false },
+      { id: 'warp', name: 'Warp', description: 'Walls wrap to the opposite edge.', speedMultiplier: 1, scoreMultiplier: 1, wrapWalls: true, extraGrowth: false },
+      { id: 'surge', name: 'Surge', description: 'The pace is noticeably faster from the first tick.', speedMultiplier: 0.82, scoreMultiplier: 1, wrapWalls: false, extraGrowth: false },
+      { id: 'rich', name: 'Rich', description: 'Every third snack is worth double score.', speedMultiplier: 1, scoreMultiplier: 2, wrapWalls: false, extraGrowth: false, bonusEvery: 3 },
+      { id: 'bloom', name: 'Bloom', description: 'Each snack adds an extra tail segment.', speedMultiplier: 1, scoreMultiplier: 1, wrapWalls: false, extraGrowth: true }
+    ];
+
+    let selectedAnomalyId = 'none';
+    let activeAnomaly = ANOMALIES[0];
+
+    function getSelectedAnomaly() {
+      return ANOMALIES.find(a => a.id === selectedAnomalyId) || ANOMALIES[0];
+    }
+
+    function renderAnomalyChoices() {
+      anomalyGrid.innerHTML = '';
+      ANOMALIES.forEach((anomaly) => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'anomaly-card' + (selectedAnomalyId === anomaly.id ? ' selected' : '');
+        card.innerHTML = `<strong>${anomaly.name}</strong><span>${anomaly.description}</span>`;
+        card.addEventListener('click', () => {
+          selectedAnomalyId = anomaly.id;
+          renderAnomalyChoices();
+        });
+        anomalyGrid.appendChild(card);
+      });
+      activeAnomaly = getSelectedAnomaly();
+      anomalyVal.textContent = activeAnomaly.name;
+      startBtn.textContent = activeAnomaly.id === 'none' ? 'Start Run' : `Start Run (${activeAnomaly.name})`;
+    }
+
     // ── State ────────────────────────────────────────────────────────────────
     let snake, dir, nextDir, food, score, level, foodCount;
     let running = false, paused = false, loopId = null, lastTick = 0;
     let foodColorIdx = 0;
     let currentInterval = BASE_INTERVAL;
 
-    // ── Grid background (drawn once to an offscreen canvas) ──────────────────
+bestEl.textContent = getBestScore();
+renderAnomalyChoices();
+
+// ── Grid background (drawn once to an offscreen canvas) ──────────────────
     const gridCanvas = document.createElement('canvas');
     gridCanvas.width  = CANVAS_W;
     gridCanvas.height = CANVAS_H;
@@ -582,7 +704,13 @@
     }
 
     function computeInterval(lvl) {
-      return Math.max(55, BASE_INTERVAL - (lvl - 1) * SPEED_STEP);
+      const base = Math.max(55, BASE_INTERVAL - (lvl - 1) * SPEED_STEP);
+      if (!activeAnomaly || !activeAnomaly.speedMultiplier) return base;
+      return Math.round(base * activeAnomaly.speedMultiplier);
+    }
+
+    function getLevelEvery() {
+      return activeAnomaly && activeAnomaly.levelEvery ? activeAnomaly.levelEvery : POINTS_PER_LVL;
     }
 
     // ── Init / Restart ───────────────────────────────────────────────────────
@@ -596,7 +724,9 @@
       dir      = { x: 1, y: 0 };
       nextDir  = { x: 1, y: 0 };
       score    = 0; level = 1; foodCount = 0;
-      currentInterval = BASE_INTERVAL;
+      activeAnomaly = getSelectedAnomaly();
+      currentInterval = computeInterval(level);
+      anomalyVal.textContent = activeAnomaly.name;
 
       scoreEl.textContent = 0;
       levelEl.textContent = 1;
@@ -626,22 +756,35 @@
 
     function tick() {
       dir = { ...nextDir };
-      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+      let head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
 
-      // Wall collision
-      if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) { return gameOver(); }
-      // Self collision
+      if (activeAnomaly?.wrapWalls) {
+        if (head.x < 0) head.x = COLS - 1;
+        else if (head.x >= COLS) head.x = 0;
+        if (head.y < 0) head.y = ROWS - 1;
+        else if (head.y >= ROWS) head.y = 0;
+      }
+
+      if (!activeAnomaly?.wrapWalls && (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS)) { return gameOver(); }
       if (snake.some(s => s.x === head.x && s.y === head.y)) { return gameOver(); }
 
       snake.unshift(head);
 
       if (head.x === food.x && head.y === food.y) {
-        score++;
+        const scoreBase = activeAnomaly?.scoreMultiplier || 1;
+        const bonusEvery = activeAnomaly?.bonusEvery || 0;
+        const scoreGain = bonusEvery && ((foodCount + 1) % bonusEvery === 0) ? scoreBase * 2 : scoreBase;
+        score += scoreGain;
         foodCount++;
         scoreEl.textContent = score;
 
-        // Level up
-        if (foodCount % POINTS_PER_LVL === 0) {
+        if (activeAnomaly?.extraGrowth) {
+          const tail = snake[snake.length - 1];
+          snake.push({ x: tail.x, y: tail.y });
+        }
+
+        const levelEvery = getLevelEvery();
+        if (foodCount % levelEvery === 0) {
           level++;
           currentInterval = computeInterval(level);
           levelEl.textContent = level;
@@ -704,7 +847,7 @@
     function saveOnly() {
       const name = nameInput.value.trim() || 'Anonymous';
       localStorage.setItem(NAME_KEY, name);
-      const idx = addToLeaderboard(name, score, level);
+      const idx = addToLeaderboard(name, score, level, activeAnomaly?.name || 'None');
       bestEl.textContent = getBestScore();
       // Hide name entry, show Play Again
       nameEntryEl.style.display = 'none';
@@ -715,10 +858,11 @@
     function saveAndRestart() {
       const name = nameInput.value.trim() || 'Anonymous';
       localStorage.setItem(NAME_KEY, name);
-      const idx = addToLeaderboard(name, score, level);
+      const idx = addToLeaderboard(name, score, level, activeAnomaly?.name || 'None');
       bestEl.textContent = getBestScore();
-      startGame();
-      // Brief delay so game is running before modal opens
+      renderAnomalyChoices();
+      startScr.style.display = 'flex';
+      gameoverScr.style.display = 'none';
       setTimeout(() => { paused = true; pausedForModal = true; openLeaderboard(idx); }, 80);
     }
 
