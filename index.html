@@ -70,7 +70,7 @@
 
     #hud {
       display: flex;
-      gap: 40px;
+      gap: 26px;
       font-size: 14px;
       color: var(--muted);
       letter-spacing: 0.06em;
@@ -85,6 +85,12 @@
       display: inline-block;
       min-width: 90px;
       color: var(--neon-cyan);
+    }
+
+    #archive-val {
+      display: inline-block;
+      min-width: 90px;
+      color: var(--neon-yellow);
     }
 
     #canvas-wrap {
@@ -406,6 +412,7 @@
     <div>Best&nbsp;&nbsp;<span id="best-val">0</span></div>
     <div>Level&nbsp;&nbsp;<span id="level-val">1</span></div>
     <div>Run&nbsp;&nbsp;<span id="anomaly-val">None</span></div>
+    <div>Archive&nbsp;&nbsp;<span id="archive-val">Dormant</span></div>
   </div>
 
   <div id="canvas-wrap">
@@ -414,7 +421,7 @@
     <!-- Start screen -->
     <div class="overlay" id="start-screen">
       <h2 style="color:var(--neon-green);text-shadow:var(--glow-green)">Run Setup</h2>
-      <p>Use <strong>Arrow keys</strong> or <strong>WASD</strong> to steer.<br>Pick one anomaly to shape this run.</p>
+      <p>Use <strong>Arrow keys</strong> or <strong>WASD</strong> to steer.<br>Pick one anomaly to shape this run. <span id="archive-summary">Archive: Dormant</span></p>
       <div id="anomaly-grid"></div>
       <button class="btn" id="start-btn">Start Run</button>
     </div>
@@ -486,6 +493,8 @@ const scoreEl    = document.getElementById('score-val');
 const bestEl     = document.getElementById('best-val');
 const levelEl    = document.getElementById('level-val');
 const anomalyVal = document.getElementById('anomaly-val');
+const archiveVal = document.getElementById('archive-val');
+const archiveSummary = document.getElementById('archive-summary');
 const startScr   = document.getElementById('start-screen');
 const gameoverScr= document.getElementById('gameover-screen');
 const finalScoreEl = document.getElementById('final-score');
@@ -632,38 +641,93 @@ themeToggleBtn.addEventListener('click', () => setTheme(document.body.dataset.th
       { id: 'bloom', name: 'Bloom', description: 'Each snack adds an extra tail segment.', speedMultiplier: 1, scoreMultiplier: 1, wrapWalls: false, extraGrowth: true }
     ];
 
-    let selectedAnomalyId = 'none';
-    let activeAnomaly = ANOMALIES[0];
-
-    function getSelectedAnomaly() {
-      return ANOMALIES.find(a => a.id === selectedAnomalyId) || ANOMALIES[0];
+const ARCHIVE_KEY = 'neon_snake_ascension_archive';
+function getDefaultArchiveState() {
+  return { runs: 0, totalScore: 0, levelTotal: 0, bestScore: 0, lastUpdated: null };
+}
+function loadArchiveState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || 'null');
+    if (!saved) return getDefaultArchiveState();
+    return { ...getDefaultArchiveState(), ...saved };
+  } catch {
+    return getDefaultArchiveState();
+  }
+}
+function saveArchiveState(state) {
+  try {
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage failures so single-play sessions still function.
+  }
+}
+function computeArchiveTier(state) {
+  const progress = state.runs * 1.2 + state.totalScore / 500 + state.levelTotal / 12;
+  return Math.min(5, Math.max(0, Math.floor(progress / 3)));
     }
+function getArchiveModifiers() {
+  const state = loadArchiveState();
+  const tier = computeArchiveTier(state);
+  const scoreBoost = 1 + tier * 0.05;
+  const paceBoost = 1 - Math.min(0.12, tier * 0.018);
+  const growthBonus = tier >= 2;
+  return { state, tier, scoreBoost, paceBoost, growthBonus, label: tier ? `Tier ${tier}` : 'Dormant' };
+}
+function updateArchiveUI() {
+  const archive = getArchiveModifiers();
+  archiveVal.textContent = archive.label;
+  const summary = archive.tier
+    ? `${archive.label} · +${Math.round((archive.scoreBoost - 1) * 100)}% score · ${Math.round((1 - archive.paceBoost) * 100)}% quicker pace`
+    : 'Dormant';
+  archiveSummary.textContent = `Archive: ${summary}`;
+  return archive;
+}
+function registerArchiveRun(score, level) {
+  const state = loadArchiveState();
+  state.runs += 1;
+  state.totalScore += Math.max(0, score);
+  state.levelTotal += Math.max(0, level);
+  state.bestScore = Math.max(state.bestScore || 0, score);
+  state.lastUpdated = new Date().toISOString();
+  saveArchiveState(state);
+  updateArchiveUI();
+}
 
-    function renderAnomalyChoices() {
-      anomalyGrid.innerHTML = '';
-      ANOMALIES.forEach((anomaly) => {
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = 'anomaly-card' + (selectedAnomalyId === anomaly.id ? ' selected' : '');
-        card.innerHTML = `<strong>${anomaly.name}</strong><span>${anomaly.description}</span>`;
-        card.addEventListener('click', () => {
-          selectedAnomalyId = anomaly.id;
-          renderAnomalyChoices();
-        });
-        anomalyGrid.appendChild(card);
-      });
-      activeAnomaly = getSelectedAnomaly();
-      anomalyVal.textContent = activeAnomaly.name;
-      startBtn.textContent = activeAnomaly.id === 'none' ? 'Start Run' : `Start Run (${activeAnomaly.name})`;
-    }
+let selectedAnomalyId = 'none';
+let activeAnomaly = ANOMALIES[0];
+let archiveRunModifiers = getArchiveModifiers();
 
-    // ── State ────────────────────────────────────────────────────────────────
-    let snake, dir, nextDir, food, score, level, foodCount;
-    let running = false, paused = false, loopId = null, lastTick = 0;
-    let foodColorIdx = 0;
-    let currentInterval = BASE_INTERVAL;
+function getSelectedAnomaly() {
+  return ANOMALIES.find(a => a.id === selectedAnomalyId) || ANOMALIES[0];
+}
+
+function renderAnomalyChoices() {
+  anomalyGrid.innerHTML = '';
+  ANOMALIES.forEach((anomaly) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'anomaly-card' + (selectedAnomalyId === anomaly.id ? ' selected' : '');
+    card.innerHTML = `<strong>${anomaly.name}</strong><span>${anomaly.description}</span>`;
+    card.addEventListener('click', () => {
+      selectedAnomalyId = anomaly.id;
+      renderAnomalyChoices();
+    });
+    anomalyGrid.appendChild(card);
+  });
+  activeAnomaly = getSelectedAnomaly();
+  anomalyVal.textContent = activeAnomaly.name;
+  startBtn.textContent = activeAnomaly.id === 'none' ? 'Start Run' : `Start Run (${activeAnomaly.name})`;
+  updateArchiveUI();
+}
+
+// ── State ────────────────────────────────────────────────────────────────
+let snake, dir, nextDir, food, score, level, foodCount;
+let running = false, paused = false, loopId = null, lastTick = 0;
+let foodColorIdx = 0;
+let currentInterval = BASE_INTERVAL;
 
 bestEl.textContent = getBestScore();
+archiveRunModifiers = updateArchiveUI();
 renderAnomalyChoices();
 
 // ── Grid background (drawn once to an offscreen canvas) ──────────────────
@@ -705,8 +769,9 @@ renderAnomalyChoices();
 
     function computeInterval(lvl) {
       const base = Math.max(55, BASE_INTERVAL - (lvl - 1) * SPEED_STEP);
-      if (!activeAnomaly || !activeAnomaly.speedMultiplier) return base;
-      return Math.round(base * activeAnomaly.speedMultiplier);
+      const archiveSpeed = archiveRunModifiers?.paceBoost || 1;
+      if (!activeAnomaly || !activeAnomaly.speedMultiplier) return Math.round(base * archiveSpeed);
+      return Math.round(base * activeAnomaly.speedMultiplier * archiveSpeed);
     }
 
     function getLevelEvery() {
@@ -715,6 +780,7 @@ renderAnomalyChoices();
 
     // ── Init / Restart ───────────────────────────────────────────────────────
     function startGame() {
+      archiveRunModifiers = getArchiveModifiers();
       const midX = Math.floor(COLS / 2), midY = Math.floor(ROWS / 2);
       snake = [
         { x: midX,     y: midY },
@@ -726,7 +792,7 @@ renderAnomalyChoices();
       score    = 0; level = 1; foodCount = 0;
       activeAnomaly = getSelectedAnomaly();
       currentInterval = computeInterval(level);
-      anomalyVal.textContent = activeAnomaly.name;
+      anomalyVal.textContent = archiveRunModifiers.tier ? `${activeAnomaly.name} + ${archiveRunModifiers.label}` : activeAnomaly.name;
 
       scoreEl.textContent = 0;
       levelEl.textContent = 1;
@@ -771,14 +837,15 @@ renderAnomalyChoices();
       snake.unshift(head);
 
       if (head.x === food.x && head.y === food.y) {
-        const scoreBase = activeAnomaly?.scoreMultiplier || 1;
+        const scoreBase = (activeAnomaly?.scoreMultiplier || 1) * (archiveRunModifiers?.scoreBoost || 1);
         const bonusEvery = activeAnomaly?.bonusEvery || 0;
         const scoreGain = bonusEvery && ((foodCount + 1) % bonusEvery === 0) ? scoreBase * 2 : scoreBase;
         score += scoreGain;
         foodCount++;
         scoreEl.textContent = score;
 
-        if (activeAnomaly?.extraGrowth) {
+        const archiveGrowth = archiveRunModifiers?.growthBonus && ((foodCount % 8) === 0);
+        if (activeAnomaly?.extraGrowth || archiveGrowth) {
           const tail = snake[snake.length - 1];
           snake.push({ x: tail.x, y: tail.y });
         }
@@ -829,6 +896,7 @@ renderAnomalyChoices();
     // ── Game over ────────────────────────────────────────────────────────────
     function gameOver() {
       running = false;
+      registerArchiveRun(score, level);
       finalScoreEl.textContent = score;
       finalLevelEl.textContent = level;
 
